@@ -32,14 +32,6 @@ init_config() ->
 insert_init_config([]) ->
     ok;
 
-insert_init_config([{time_log_open, true} | T]) ->
-    ets:insert(?ETS_INIT_CONFIG, {time_log_open, true}),
-    insert_init_config(T);
-
-insert_init_config([{time_log_open, _} | T]) ->
-    ets:insert(?ETS_INIT_CONFIG, {time_log_open, false}),
-    insert_init_config(T);
-
 insert_init_config([{mysql_port, Number} | T]) when is_integer(Number), Number > 0 ->
     ets:insert(?ETS_INIT_CONFIG, {mysql_port, Number}),
     insert_init_config(T);
@@ -52,8 +44,8 @@ insert_init_config([{worker_process, Number} | T]) when is_integer(Number), Numb
     ets:insert(?ETS_INIT_CONFIG, {worker_process, Number}),
     insert_init_config(T);
 
-insert_init_config([{http_per_send, Number} | T]) when is_integer(Number), Number > 0 ->
-    ets:insert(?ETS_INIT_CONFIG, {http_per_send, Number}),
+insert_init_config([{http_url_prefix, {_,_,_,_} = Prefxi} | T]) ->
+    ets:insert(?ETS_INIT_CONFIG, {http_url_prefix, Prefxi}),
     insert_init_config(T);
 
 insert_init_config([{mysql_write_cycle, Number} | T]) when is_integer(Number), Number > 0 ->
@@ -64,6 +56,15 @@ insert_init_config([{http_send_cycle, Number} | T]) when is_integer(Number), Num
     ets:insert(?ETS_INIT_CONFIG, {http_send_cycle, Number}),
     insert_init_config(T);
 
+insert_init_config([{mysql_table_key_range, Range} | T]) when is_list(Range), Range /= "" ->
+    case checkRange(Range) of
+    true ->
+        ets:insert(?ETS_INIT_CONFIG, {mysql_table_key_range, Range}),
+        insert_init_config(T);
+    _ ->
+        io:format("bad config : ~p~n", [{mysql_table_key_range, Range}])
+    end;
+
 insert_init_config([{_, Str} = H | T]) when is_list(Str) ->
     ets:insert(?ETS_INIT_CONFIG, H),
     insert_init_config(T);
@@ -71,7 +72,14 @@ insert_init_config([{_, Str} = H | T]) when is_list(Str) ->
 insert_init_config([H | _]) ->
     io:format("bad config : ~p~n", [H]).
 
+checkRange([]) ->
+    true;
 
+checkRange([{Cid1, Cid2, Pager} | T ]) when is_list(Cid1), is_list(Cid2), is_list(Pager) ->
+    checkRange(T);
+
+checkRange(_) ->
+    false.
 
 
 init_ets() ->

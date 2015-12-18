@@ -148,28 +148,55 @@ make_update_filed(Field) ->
     Str.
 
 load_mysql() ->
-    try
-        Query = make_load_mysql_query(),
-        io:format("load mysql start ...~n"),
-        Time1 = misc_timer:now_milliseconds(),
-        Data = select_mysql_table(Query),
-        Time2 = misc_timer:now_milliseconds(),
-        io:format("load mysql fnish !~n"),
-        io:format("mysql data len: ~p,  time: ~p (ms)~n", [length(Data), Time2 - Time1]),
-        io:format("start distribute data and start worker process ...~n"),
-        distribute(Data)
-    catch
-        _:Reason ->
-            io:format("load mysql fail : ~p~n", [Reason])
-    end.
+    Query = make_load_mysql_query(),
+    io:format("load mysql start ...~n"),
+    Time1 = misc_timer:now_milliseconds(),
+    Data = select_mysql_table(Query),
+    Time2 = misc_timer:now_milliseconds(),
+    io:format("load mysql fnish !~n"),
+    io:format("mysql data len: ~p,  time: ~p (ms)~n", [length(Data), Time2 - Time1]),
+    Range = util:get_init_config(mysql_table_key_range),
+    Data2 = insert_pager(Data, Range),
+    io:format("start distribute data and start worker process ...~n"),
+    distribute(Data2).
+
+
+insert_pager(Data, Range) ->
+    insert_pager(Data, Range, []).
+
+insert_pager([], _, Res) ->
+    Res;
+
+insert_pager([[Id, Value, Cid1, Cid3] | T], Range, Res) ->
+    Pager = get_pager(Cid1, Cid3, Range),
+    insert_pager(T, [{Id, Value, Cid1, Cid3, Pager} | Res]).
+
+get_pager(Cid1, Cid3, [{Cid1, Cid3, Pager} | _]) ->
+    Pager;
+
+get_pager(Cid1, Cid3, [_ | T]) ->
+    get_pager(Cid1, Cid3, T).
 
 make_load_mysql_query() ->
     Table = util:get_init_config(mysql_table),
-    Key = util:get_init_config(mysql_table_key),
-    MaxKey = util:get_init_config(mysql_table_key_max),
-    MinKey = util:get_init_config(mysql_table_key_min),
+    Range = util:get_init_config(mysql_table_key_range),
     Field = util:get_init_config(mysql_table_field),
-    ?MAKE_QUERY_SELECT_TABLE(Table, Field, Key, MinKey, MaxKey).
+    Where = make_sql_where_from_range(Range),
+    make_query_select_table(Table, Field, Where).
+
+
+make_query_select_table(Table, Field, Where)
+    "SELECT "++Field++" FROM "++Table++" WHERE "++Where.
+
+
+make_sql_where_from_range(Range) ->
+    make_sql_where_from_range(Range, []).
+
+make_sql_where_from_range([{Cid1, Cid3, _}], Res) ->
+    "(cid1="++Cid1++" and cid3="++Cid3")"++Res;
+
+make_sql_where_from_range([{Cid1, Cid3, _} | T], Res) ->
+    make_sql_where_from_range(T, " or (cid1="++Cid1++" and cid3="++Cid3")"++Res).
 
 select_mysql_table(Query) ->
     case catch execute_sql(Query) of
