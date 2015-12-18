@@ -105,9 +105,9 @@
             add_pool/9,
             add_pool/8, remove_pool/1, increment_pool_size/2, decrement_pool_size/2
 ]).
-
+        
 %% Interaction API
-%% Used to interact with the database.
+%% Used to interact with the database.    
 -export([
             prepare/2,
             execute/2, execute/3, execute/4, execute/5,
@@ -246,8 +246,8 @@ config_ok(#pool{pool_id=PoolId,size=Size,user=User,password=Password,host=Host,p
 config_ok(_BadOptions) ->
     erlang:error(badarg).
 
-encoding_ok(Enc) when is_atom(Enc) ->  ok;
-encoding_ok({Enc, Coll}) when is_atom(Enc), is_atom(Coll) -> ok;
+encoding_ok(Enc) when is_atom(Enc) ->  ok; 
+encoding_ok({Enc, Coll}) when is_atom(Enc), is_atom(Coll) -> ok; 
 encoding_ok(_)  ->  erlang:error(badarg).
 
 %% Creates a pool record, opens n=Size connections and calls
@@ -267,7 +267,7 @@ add_pool(PoolId, Options) when is_list(Options) ->
     Warnings = proplists:get_value(warnings, Options, false),
     add_pool(#pool{pool_id=PoolId,size=Size, user=User, password=Password,
 			  host=Host, port=Port, database=Database,
-			  encoding=Encoding, start_cmds=StartCmds,
+			  encoding=Encoding, start_cmds=StartCmds, 
 			  connect_timeout=ConnectTimeout, warnings=Warnings}).
 
 add_pool(#pool{pool_id=PoolId,size=Size,user=User,password=Password,host=Host,port=Port,
@@ -275,7 +275,7 @@ add_pool(#pool{pool_id=PoolId,size=Size,user=User,password=Password,host=Host,po
 		       connect_timeout=ConnectTimeout,warnings=Warnings}=PoolSettings)->
     config_ok(PoolSettings),
     case emysql_conn_mgr:has_pool(PoolId) of
-        true ->
+        true -> 
             {error,pool_already_exists};
         false ->
             Pool = #pool{
@@ -328,8 +328,8 @@ add_pool(PoolId, Size, User, Password, Host, Port, Database, Encoding) ->
 add_pool(PoolId, Size, User, Password, Host, Port, Database, Encoding, StartCmds) ->
     add_pool(PoolId, Size, User, Password, Host, Port, Database, Encoding, StartCmds, infinity).
 
-add_pool(PoolId, Size, User, Password, Host, Port, Database,
-	 Encoding, StartCmds, ConnectTimeout)->
+add_pool(PoolId, Size, User, Password, Host, Port, Database, 
+	 Encoding, StartCmds, ConnectTimeout)->    
     add_pool(PoolId,[{size,Size},{user,User},{password,Password},
 		     {host,Host},{port,Port},{database,Database},
 		     {encoding,Encoding},{start_cmds,StartCmds},
@@ -669,7 +669,7 @@ result_type(#eof_packet{})    -> eof.
 -spec as_dict(Result) -> Dict
   when
     Result :: #result_packet{},
-    Dict :: dict:dict().
+    Dict :: dict().
 as_dict(Res) -> emysql_conv:as_dict(Res).
 
 

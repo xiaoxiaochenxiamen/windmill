@@ -1,11 +1,20 @@
 
 第三轮开发：
 1、配置文件：{http_send_cycle, *}, http请求一次数据周期(秒)
+
 2、配置文件：{mysql_table_key_range, "{[{"cid1:10,cid3:25,pager:200"},{"cid1:20,cid3:35,pager:100"},...]}"},该机器分配的数据范围。
+
 3、脚本启动时，按照2中配置读取数据库中的指定表数据（id和value）进入内存。查询SQL格式为：where (cid1=10 and cid3=25) or (cid1=20 and cid3=35))
-4、使用2的数据拼接成url地址并发访问，url地址为http://115.28.144.211:8080/jtest.php?functionId=getCat&body=%7B%22catelogyIdLevel1%22%3A%22{cid1}%22%2C%22stock%22%3A%221%22%2C%22pagesize%22%3A%2210%22%2C%22catelogyId%22%3A%22{cid3}%22%2C%22page%22%3A%22{pagenum}%22%2C%22cid%22%3A%22{cid3}%22%7D
+
+4、使用2的数据拼接成url地址并发访问，url地址为
+
+http://115.28.144.211:8080/jtest.php?functionId=getCat&body=%7B%22catelogyIdLevel1%22%3A%22{cid1}%22%2C%22stock%22%3A%221%22%2C%22
+pagesize%22%3A%2210%22%2C%22catelogyId%22%3A%22{cid3}%22%2C%22page%22%3A%22{pagenum}%22%2C%22cid%22%3A%22{cid3}%22%7D
+
 这里的pagenum是从1开始到Pager的序列数字。如2中cid1的pager为200，则pagenum从1到200顺序访问。其中的内容格式为json数据urlencode的结果。
+
 5、解析返回的json数据，每个json数据包含最多10条：
+
 {"page":"1","wareInfo":[
 
 {"cid1":"1318","cid2":"1466","catid":"1698","wareId":"12345670","jdPrice":"3450.00"},
