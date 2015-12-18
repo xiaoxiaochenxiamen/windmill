@@ -1,0 +1,12 @@
+{application, windmill,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { windmill_app, []}},
+  {env, []}
+ ]}.
