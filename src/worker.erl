@@ -12,19 +12,28 @@
 -export([start_link/1
         ]).
 
-start_link(Data) ->
-    gen_server:start_link(?MODULE, Data, []).
+-record(worker,{
+    id,
+    init
+    }).
 
-init(Data) ->
+start_link([Num, Init]) ->
+    gen_server:start_link(?MODULE, [Num, Init], []).
+
+init([Num, Init]) ->
     process_flag(trap_exit, true),
     inets:start(),
-    {ok, lists:sort(key_to_str(Data))}.
+    insert_woker_pid(Num, Init),
+    {ok, #worker{
+        id = Num,
+        init = Init
+    }}.
 
 code_change(_OldVsn, Status, _Extra) ->
     {ok, Status}.
 
 terminate(_Reason, Status) ->
-    util:delete_ets_worker_pid(self()),
+    util:delete_ets_worker_pid(Status#worker.id),
     {ok, Status}.
 
 handle_call(_Info, _From, Status) ->
@@ -33,89 +42,69 @@ handle_call(_Info, _From, Status) ->
 handle_cast(_Info, Status) ->
     {noreply, Status}.
 
-handle_info(run, Status) ->
-    Cycle = util:get_init_config(http_send_cycle),
-    erlang:send_after(Cycle*1000, self(), run),
-    NewStatus = http_request(Status),
-    {noreply, NewStatus};
+handle_info({run, Stamp}, Status) ->
+    http_request(Status#worker.init, Stamp),
+    update_log_http_time(Status#worker.id),
+    {noreply, Status};
 
 handle_info(_Info, Status) ->
     {noreply, Status}.
 
 
-check_value(Data, Result) ->
-    check_value(Data, Result, []).
+http_request({Cid1, Cid3, Pager}, Stamp) ->
+    http_request_sync_data(Cid1, Cid3, Pager, Stamp).
 
+http_request_sync_data(_Cid1, _Cid3, 0, _Stamp) ->
+    ok;
 
-check_value([], _, Res) ->
-    Res;
-
-check_value(Data, [], Res) when length(Data) > length(Res) ->
-    Res ++ Data;
-
-check_value(Data, [], Res) ->
-    Data ++ Res;
-
-check_value([H | Data], [H | Result], Res) ->
-    check_value(Data, Result, [H | Res]);
-
-check_value([{Key, Old} | Data], [{Key, New} | Result], Res) when Old == New ->
-    check_value(Data, Result, [{Key, New} | Res]);
-
-check_value([{Key, _} | Data], [{Key, New} | Result], Res) ->
-    util:insert_buff({Key, New}),
-    check_value(Data, Result, [{Key, New} | Res]);
-
-check_value([{Old, Value} | Data], [{New, _} | Result], Res) when Old > New ->
-    check_value([{Old, Value} | Data], Result, Res);
-
-check_value([H | Data], Result, Res) ->
-    check_value(Data, Result, [H | Res]).
-
-http_request(Data) ->
-    Once = util:get_init_config(http_per_send),
+http_request_sync_data(Cid1, Cid3, Pager, Stamp) ->
+    Url = make_url(Cid1, Cid3, Pager),
     Time = misc_timer:now_milliseconds(),
-    NewData = http_send(Data, Once, []),
+    Body = post_request_to_sever(Url),
     check_http_time(Time),
-    lists:sort(check_value(Data, NewData)).
+    Data = decode_json_res(Body),
+    update_buff_data(Data, Stamp),
+    http_request_sync_data(Cid1, Cid3, Pager-1, Stamp).
 
-http_send([], _, Res) ->
-    Res;
 
-http_send(Data, Once, Res) ->
-    {Send, T} = get_worker_data(Data, Once, []),
-    Url = make_url(Send),
+
+post_request_to_sever(Url) ->
     case catch httpc:request(Url) of
     {ok,{{"HTTP/1.1",200,"OK"}, _, Body}} ->
-        Result = decode_json_res(Body),
-        http_send(T, Once, Result ++ Res);
+        Body;
     _ ->
-        http_send(Data, Once, Res)
+       []
     end.
 
 
 check_http_time(Time) ->
-    HttpTime = misc_timer:now_milliseconds() - Time,
-    ets:insert(?ETS_WORKER_PID, {self(), HttpTime}).
+    New = misc_timer:now_milliseconds() - Time,
+    Old = get(http_time),
+    case Old < New of
+    true ->
+        put(http_time, New);
+    _ ->
+        skip
+    end.
+
+update_log_http_time(Id) ->
+    New = get(http_time),
+    [{Id, Pid, Data, Old}] = ets:lookup(?ETS_WORKER, Id),
+    case Old < New of
+    true ->
+        ets:insert(?ETS_WORKER, {Id, Pid, Data, New});
+    _ ->
+        skip
+    end.
+
+make_url(Cid1, Cid3, Pager) ->
+    {Url1, Url2, Url3, Url4, Url5} = util:get_init_config(http_url_prefix),
+    PagerStr = util:term_to_string(Pager),
+    Url1++Cid1++Url2++Cid3++Url3++PagerStr++Url4++Cid3++Url5.
 
 
-
-make_url(Data) ->
-    UrlPrefix = util:get_init_config(http_url_prefix),
-    Key = make_url_key(Data),
-    UrlPrefix++Key.
-
-make_url_key(Data) ->
-    make_url_key(Data, []).
-
-make_url_key([], []) ->
+decode_json_res([]) ->
     [];
-
-make_url_key([], [_, _, _, _, _ | Res]) ->
-    Res;
-
-make_url_key([{Key, _} | T], Res) ->
-    make_url_key(T, "%2cJ_"++Key++Res).
 
 decode_json_res(Param) ->
     case catch json:decode(Param) of
@@ -137,14 +126,17 @@ make_http_result([{obj, [{"id", <<_, _, Key/binary>>}, {"p" ,Value}, _]} | T], R
 make_http_result([_ | T], Res) ->
     make_http_result(T, Res).
 
-key_to_str(Data) ->
-    [{integer_to_list(Key), Value} || {Key, Value} <- Data].
+insert_woker_pid(Num, Data) ->
+    ets:insert(?ETS_WORKER, {Num, self(), Data, 0}).
 
-get_worker_data([], _, Res) ->
-    {Res, []};
+update_buff_data([], _) ->
+    ok;
 
-get_worker_data(Data, 0, Res) ->
-    {Res, Data};
-
-get_worker_data([H | T], Num, Res) ->
-    get_worker_data(T, Num - 1, [H | Res]).
+update_buff_data([{Id, Value} | T], Stamp) ->
+    case ets:lookup(?ETS_BUFF, Id) of
+    [{Id, Value, _}] ->
+        skip;
+    _ ->
+        ets:insert(?ETS_BUFF, {Id, Value, Stamp})
+    end,
+    update_buff_data(T, Stamp).

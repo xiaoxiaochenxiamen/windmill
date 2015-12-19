@@ -9,8 +9,8 @@
         code_change/3,
         terminate/2]).
 
--export([start_link/0
-    % make/1
+-export([start_link/0,
+        make_db/0
         ]).
 
 
@@ -25,7 +25,6 @@ init(_) ->
     Pool = add_pool(),
     io:format("emysql poll ~p~n", [Pool]),
     io:format("~p -- pool : ~p start ok!~n", [?EMYSQL_APP, ?WINDMILL_EMYSQL_POOL]),
-    load_mysql(),
     {ok, []}.
 
 code_change(_OldVsn, Status, _Extra) ->
@@ -47,14 +46,12 @@ handle_info(run, Status) ->
     write_mysql_data(),
     {noreply, Status};
 
+handle_info(load, Status) ->
+    load_mysql(),
+    windmill ! load_over,
+    {noreply, Status};
+
 handle_info(save, Status) ->
-    BuffA = ets:tab2list(?ETS_BUFF_A),
-    BuffB = ets:tab2list(?ETS_BUFF_B),
-    BuffC = ets:tab2list(?ETS_BUFF_C),
-    write_data(BuffA),
-    write_data(BuffB),
-    write_data(BuffC),
-    io:format("save fnish ! update mysql row: ~p !~n", [length(BuffA)+length(BuffB)+length(BuffC)]),
     {noreply, Status};
 
 handle_info(_Info, Status) ->
@@ -134,12 +131,12 @@ make_update_mysql(Value) ->
     Table = util:get_init_config(mysql_table),
     Field = util:get_init_config(mysql_table_field),
     UpdateField = make_update_filed(Field),
-    ?MAKE_QUERY_UPDATE_TABLE_FIELD_VALUE(Table, Field, Value, UpdateField).
+    nake_query_update_table_field_value(Table, Field, Value, UpdateField).
 
 make_log_mysql(Value) ->
     Table = util:get_init_config(mysql_log_table),
-    Field = util:get_init_config(mysql_log_field),
-    ?MAKE_QUERY_REPLACE_TABLE_FIELD_VALUE(Table, Field, Value).
+    % Field = util:get_init_config(mysql_log_field),
+    "INSERT INTO "++Table++"(id,value)"++" VALUES"++Value.
 
 make_update_filed(Field) ->
     FieldList = string:tokens(Field, ","),
@@ -155,48 +152,35 @@ load_mysql() ->
     Time2 = misc_timer:now_milliseconds(),
     io:format("load mysql fnish !~n"),
     io:format("mysql data len: ~p,  time: ~p (ms)~n", [length(Data), Time2 - Time1]),
-    Range = util:get_init_config(mysql_table_key_range),
-    Data2 = insert_pager(Data, Range),
-    io:format("start distribute data and start worker process ...~n"),
-    distribute(Data2).
+    ok = save_buff_data(Data).
 
+save_buff_data([]) ->
+    ok;
+save_buff_data([[Id, Value] | T]) ->
+    util:insert_buff({Id, Value, 0}),
+    save_buff_data(T).
 
-insert_pager(Data, Range) ->
-    insert_pager(Data, Range, []).
-
-insert_pager([], _, Res) ->
-    Res;
-
-insert_pager([[Id, Value, Cid1, Cid3] | T], Range, Res) ->
-    Pager = get_pager(Cid1, Cid3, Range),
-    insert_pager(T, [{Id, Value, Cid1, Cid3, Pager} | Res]).
-
-get_pager(Cid1, Cid3, [{Cid1, Cid3, Pager} | _]) ->
-    Pager;
-
-get_pager(Cid1, Cid3, [_ | T]) ->
-    get_pager(Cid1, Cid3, T).
 
 make_load_mysql_query() ->
     Table = util:get_init_config(mysql_table),
     Range = util:get_init_config(mysql_table_key_range),
-    Field = util:get_init_config(mysql_table_field),
+    % Field = util:get_init_config(mysql_table_field),
     Where = make_sql_where_from_range(Range),
-    make_query_select_table(Table, Field, Where).
+    "SELECT id,value FROM "++Table++" WHERE "++Where.
 
 
-make_query_select_table(Table, Field, Where)
-    "SELECT "++Field++" FROM "++Table++" WHERE "++Where.
+nake_query_update_table_field_value(Table, Field, Value, UpdateField) ->
+    "INSERT INTO "++Table++"("++Field++") VALUES"++Value++" ON DUPLICATE KEY UPDATE "++UpdateField.
 
 
 make_sql_where_from_range(Range) ->
     make_sql_where_from_range(Range, []).
 
 make_sql_where_from_range([{Cid1, Cid3, _}], Res) ->
-    "(cid1="++Cid1++" and cid3="++Cid3")"++Res;
+    "(cid1="++Cid1++" and cid3="++Cid3++")"++Res;
 
 make_sql_where_from_range([{Cid1, Cid3, _} | T], Res) ->
-    make_sql_where_from_range(T, " or (cid1="++Cid1++" and cid3="++Cid3")"++Res).
+    make_sql_where_from_range(T, " or (cid1="++Cid1++" and cid3="++Cid3++")"++Res).
 
 select_mysql_table(Query) ->
     case catch execute_sql(Query) of
@@ -211,73 +195,51 @@ execute_sql(Query) ->
     emysql:execute(?WINDMILL_EMYSQL_POOL, Query).
 
 
-distribute(Data) ->
-    Worker = util:get_init_config(worker_process),
-    Len = length(Data),
-    Once = get_woker_once(Len, Worker),
-    distribute(Data, Once).
+make_db() ->
+    create_table(),
+    make_table_data().
 
-distribute([], _) ->
-    io:format("distribute fnish ! worker process : ~p~n", [ets:info(?ETS_WORKER_PID, size)]),
-    io:format("start run worker process ...~n"),
-    F = fun({Pid, _}, Msg) ->
-            Pid ! Msg,
-            Msg
-        end,
-    ets:foldl(F, run, ?ETS_WORKER_PID),
-    Sec = util:get_init_config(mysql_write_cycle),
-    erlang:send_after(Sec*1000, self(), run),
-    io:format("all worker process start ok !~n"),
-    io:format("start sync data ...~n"),
+make_table_data() ->
+    make_table_data(1000000).
+
+make_table_data(2000000) ->
     ok;
 
-distribute(Data, Once) ->
-    {WorkerData, T} = get_worker_data(Data, Once, []),
-    case catch supervisor:start_child(worker_sup, [WorkerData]) of
-    {ok, Pid} ->
-         util:insert_ets_worker_pid({Pid, 0}),
-        distribute(T, Once);
-    _ ->
-        distribute(Data, Once)
-    end.
+make_table_data(Min) ->
+    Time1 = misc_timer:now_milliseconds(),
+    Data = make_data(Min, Min + 200000),
+    Time2 = misc_timer:now_milliseconds(),
+    Value = make_field_string_int_table(Data, ""),
+    Time3 = misc_timer:now_milliseconds(),
+    Query = nake_query_update_table_field_value("user", "id,value,cid1,cid3", Value, "id,value,cid1,cid3"),
+    Time4 = misc_timer:now_milliseconds(),
+    emysql:execute(?WINDMILL_EMYSQL_POOL, Query),
+    Time5 = misc_timer:now_milliseconds(),
+    io:format("data ~p, Value ~p, Query ~p, mysql ~p, all ~p~n",
+        [Time2 - Time1, Time3 - Time2, Time4 - Time3, Time5 - Time4, Time5 - Time1]).
 
-get_woker_once(Len, Worker) ->
-    case Len rem Worker of
-    0 ->
-        Len div Worker;
-    _ ->
-        Len div Worker + 1
-    end.
+make_data(Min, Max) ->
+    [{X, util:rand(101, 999), util:rand(1, 100), util:rand(1, 100)} || X <- lists:seq(Min, Max)].
 
+make_field_string_int_table([], [_ | Res]) ->
+    Res;
 
-get_worker_data([], _, Res) ->
-    {Res, []};
+make_field_string_int_table([{Id, Value, Cid1, Cid3} | T], Res)  ->
+    IdStr = util:term_to_string(Id),
+    ValueStr = util:term_to_string(Value),
+    Cid1Str = util:term_to_string(Cid1),
+    Cid3Str = util:term_to_string(Cid3),
+    NewRes = ",("++IdStr++","++ValueStr++","++Cid1Str++","++Cid3Str++")"++Res,
+    make_field_string_int_table(T, NewRes).
 
-get_worker_data(Data, 0, Res) ->
-    {Res, Data};
+create_table() ->
+    create_table_user(),
+    create_table_user_log().
 
-get_worker_data([[Key, Value] | T], Num, Res) ->
-    get_worker_data(T, Num - 1, [{Key, Value} | Res]).
+create_table_user() ->
+    Sql = "CREATE TABLE user(id INT PRIMARY KEY, value Float, cid1 INT, cid3 INT)",
+    execute_sql(Sql).
 
-% make(Float) ->
-%     make(1000000, 1200000, Float),
-%     make(1200000, 1400000, Float),
-%     make(1400000, 1600000, Float),
-%     make(1600000, 1800000, Float),
-%     make(1800000, 2000000, Float).
-
-% make(Min, Max, Float)  ->
-%     Time1 = misc_timer:now_milliseconds(),
-%     Data = make_data(Min, Max, Float) ,
-%     Time2 = misc_timer:now_milliseconds(),
-%     Value = make_field_string(Data, ""),
-%     Time3 = misc_timer:now_milliseconds(),
-%     Query = make_update_mysql(Value),
-%     Time4 = misc_timer:now_milliseconds(),
-%     emysql:execute(?WINDMILL_EMYSQL_POOL, Query),
-%     Time5 = misc_timer:now_milliseconds(),
-%     io:format("data ~p, Value ~p, Query ~p, mysql ~p, all ~p~n",
-%         [Time2 - Time1, Time3 - Time2, Time4 - Time3, Time5 - Time4, Time5 - Time1]).
-
-% make_data(Min, Max, Float) ->
-%     [{util:term_to_string(X), Float} || X <- lists:seq(Min, Max)].
+create_table_user_log() ->
+    Sql = "CREATE TABLE user_log(log_id INT PRIMARY KEY AUTO_INCREMENT, id INT, value Float)",
+    execute_sql(Sql).
