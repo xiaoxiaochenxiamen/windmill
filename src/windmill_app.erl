@@ -43,11 +43,6 @@ insert_init_config([{worker_process, Number} | T]) when is_integer(Number), Numb
     ets:insert(?ETS_INIT_CONFIG, {worker_process, Number}),
     insert_init_config(T);
 
-insert_init_config([{http_url_prefix, {Url1, Url2, Url3, Url4, Url5} = Prefxi} | T]) when is_list(Url1),
-is_list(Url2), is_list(Url3), is_list(Url4), is_list(Url5) ->
-    ets:insert(?ETS_INIT_CONFIG, {http_url_prefix, Prefxi}),
-    insert_init_config(T);
-
 insert_init_config([{mysql_write_cycle, Number} | T]) when is_integer(Number), Number > 0 ->
     ets:insert(?ETS_INIT_CONFIG, {mysql_write_cycle, Number}),
     insert_init_config(T);

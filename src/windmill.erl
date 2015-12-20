@@ -19,7 +19,10 @@ start_link() ->
 
 init(_) ->
     process_flag(trap_exit, true),
-    erlang:send_after(0, self(), start),
+    observer:start(),
+    start_worker(),
+    erlang:send_after(0, self(), worker_run),
+    put(over, 0),
     {ok, []}.
 
 code_change(_OldVsn, Status, _Extra) ->
@@ -34,22 +37,35 @@ handle_call(_Info, _From, Status) ->
 handle_cast(_Info, Status) ->
     {noreply, Status}.
 
-handle_info(start, Status) ->
-    post_mysql_load_db(),
+handle_info(worker_run, Status) ->
+    Now = misc_timer:now_seconds(),
+    put(last, Now),
+    worker_run(Now),
     {noreply, Status};
 
-handle_info(load_over, Status) ->
-    distribute(),
-    io:format("distribute fnish ! worker process : ~p~n", [ets:info(?ETS_WORKER, size)]),
-    io:format("start run worker process ...~n"),
-    post_worker_msg(run),
-    io:format("all worker process start ok !~n"),
-    io:format("start sync data ...~n"),
+handle_info(over, Status) ->
+    recive_worker_over(),
     {noreply, Status};
 
 handle_info(_Info, Status) ->
     {noreply, Status}.
 
+
+recive_worker_over() ->
+    Over = get(over),
+    Worker = get(worker),
+    case Over + 1 == Worker of
+    true ->
+        Now = misc_timer:now_seconds(),
+        Cycle = util:get_init_config(http_send_cycle),
+        Last = get(last),
+        Sec = Cycle - (Now - Last),
+        erlang:send_after(Sec*1000, self(), worker_run),
+        mysql ! {update, Last},
+        put(over, 0);
+    _ ->
+        put(over, Over + 1)
+    end.
 
 peek() ->
     NowStr = util:formated_timestamp(),
@@ -70,7 +86,7 @@ save() ->
     mysql ! save.
 
 get_http_time_log() ->
-    F = fun({_, Time}, {Min, Max}) ->
+    F = fun({_, _, _, Time}, {Min, Max}) ->
             if
             Time > Max ->
                 {Min, Time};
@@ -80,38 +96,51 @@ get_http_time_log() ->
                 {Min, Max}
             end
         end,
-    ets:foldl(F, {nil, -1}, ?ETS_WORKER).
+    case ets:foldl(F, {nil, -1}, ?ETS_WORKER) of
+    {nil, X} ->
+        {X, X};
+    Other ->
+        Other
+    end.
 
 get_mysql_time_log(Key) ->
     case ets:lookup(?ETS_TIME_LOG, Key) of
     [{_, Min, Max}] ->
         {Min, Max};
     _ ->
-        {nil, -1}
+        {-1, -1}
     end.
+
+start_worker() ->
+    distribute(),
+    io:format("distribute fnish ! worker process : ~p~n", [ets:info(?ETS_WORKER, size)]),
+    io:format("start run worker process ...~n").
+
+worker_run(Now) ->
+    post_worker_msg({run, Now}),
+    Tstr = util:formated_timestamp(),
+    io:format("~p , start sync server data ...~n", [Tstr]).
+
 
 
 distribute()->
     Range = util:get_init_config(mysql_table_key_range),
-    distribute(Range, length(Range)).
+    distribute(Range, 0).
 
-distribute([], _) ->
-    ok;
+distribute([], N) ->
+    put(worker, N);
 
 distribute([H | T] = Data, N) ->
-    case catch supervisor:start_child(worker_sup, [N, H]) of
+    case catch supervisor:start_child(worker_sup, [{N, H}]) of
     {ok, _} ->
-        distribute(T, N-1);
+        distribute(T, N+1);
     _ ->
         distribute(Data, N)
     end.
 
 post_worker_msg(Msg) ->
-    F = fun({_, Pid, _}, M) ->
+    F = fun({_, Pid, _, _}, M) ->
             Pid ! M,
             M
         end,
     ets:foldl(F, Msg, ?ETS_WORKER).
-
-post_mysql_load_db() ->
-    mysql ! load.

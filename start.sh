@@ -1,14 +1,12 @@
 #!/bin/bash
 
-NODE_NAME=windmill
+NODE_NAME=windmill_3
 
-CONFIG_FILE=${NODE_NAME}
+CONFIG_FILE=windmill_3
 MARK_FILE="../logs/mark.log"
 SMP=auto
 ERL_PROCESSES=1024000
 ERL_PORTS=65535
-
-cd ../config
 
 ARGS=
 while [ $# -ne 0 ] ; do
@@ -36,7 +34,7 @@ live()
         +t 2048576 \
         -smp ${SMP} \
         -env ERL_MAX_PORTS ${ERL_PORTS} \
-        -pa ../ebin ../Emysql/ebin\
+        -pa ebin  Emysql/ebin\
         -sname ${NODE_NAME} \
         -boot start_sasl \
         -config ${CONFIG_FILE} \

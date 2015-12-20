@@ -12,18 +12,25 @@
 -export([start_link/1
         ]).
 
+-define (UrlBody1, "?functionId=getCat&body=%7B%22catelogyIdLevel1%22%3A%22%7B").
+-define (UrlBody2, "%7D%22%2C%22stock%22%3A%221%22%2C%22pagesize%22%3A%2210%22%2C%22catelogyId%22%3A%22%7B").
+-define (UrlBody3, "%7D%22%2C%22page%22%3A%22%7B").
+-define (UrlBody4, "%7D%22%2C%22cid%22%3A%22%7B").
+-define (UrlBody5, "%7D%22%7D").
+
 -record(worker,{
     id,
     init
     }).
 
-start_link([Num, Init]) ->
-    gen_server:start_link(?MODULE, [Num, Init], []).
+start_link(Init) ->
+    gen_server:start_link(?MODULE, Init, []).
 
-init([Num, Init]) ->
+init({Num, Init}) ->
     process_flag(trap_exit, true),
     inets:start(),
     insert_woker_pid(Num, Init),
+    put(http_time, 0),
     {ok, #worker{
         id = Num,
         init = Init
@@ -33,7 +40,7 @@ code_change(_OldVsn, Status, _Extra) ->
     {ok, Status}.
 
 terminate(_Reason, Status) ->
-    util:delete_ets_worker_pid(Status#worker.id),
+    util:delete_ets_worker(Status#worker.id),
     {ok, Status}.
 
 handle_call(_Info, _From, Status) ->
@@ -55,7 +62,7 @@ http_request({Cid1, Cid3, Pager}, Stamp) ->
     http_request_sync_data(Cid1, Cid3, Pager, Stamp).
 
 http_request_sync_data(_Cid1, _Cid3, 0, _Stamp) ->
-    ok;
+    windmill ! over;
 
 http_request_sync_data(Cid1, Cid3, Pager, Stamp) ->
     Url = make_url(Cid1, Cid3, Pager),
@@ -73,9 +80,8 @@ post_request_to_sever(Url) ->
     {ok,{{"HTTP/1.1",200,"OK"}, _, Body}} ->
         Body;
     _ ->
-       []
+        []
     end.
-
 
 check_http_time(Time) ->
     New = misc_timer:now_milliseconds() - Time,
@@ -98,9 +104,9 @@ update_log_http_time(Id) ->
     end.
 
 make_url(Cid1, Cid3, Pager) ->
-    {Url1, Url2, Url3, Url4, Url5} = util:get_init_config(http_url_prefix),
+    Url = util:get_init_config(http_url),
     PagerStr = util:term_to_string(Pager),
-    Url1++Cid1++Url2++Cid3++Url3++PagerStr++Url4++Cid3++Url5.
+    Url++?UrlBody1++Cid1++?UrlBody2++Cid3++?UrlBody3++PagerStr++?UrlBody4++Cid3++?UrlBody5.
 
 
 decode_json_res([]) ->
@@ -108,23 +114,23 @@ decode_json_res([]) ->
 
 decode_json_res(Param) ->
     case catch json:decode(Param) of
-    {ok, Data, []} ->
-        make_http_result(Data);
+    {ok, {obj,[{"page", _}, {"wareInfo", WareInfo}, {"isUsed", _}]}, []} ->
+        make_http_res(WareInfo);
     _ ->
         []
     end.
 
-make_http_result(Data) ->
-    make_http_result(Data, []).
+make_http_res(WareInfo) ->
+    make_http_res(WareInfo, []).
 
-make_http_result([], Res) ->
-    lists:sort(Res);
+make_http_res([], Res) ->
+    Res;
 
-make_http_result([{obj, [{"id", <<_, _, Key/binary>>}, {"p" ,Value}, _]} | T], Res) ->
-    make_http_result(T, [{binary_to_list(Key), binary_to_float(Value)} | Res]);
+make_http_res([{obj, [_, _, _, {"wareId", IdBin}, {"jdPrice", ValueBin}]} | T], Res) ->
+    make_http_res(T, [{binary_to_integer(IdBin), binary_to_float(ValueBin)} | Res]);
 
-make_http_result([_ | T], Res) ->
-    make_http_result(T, Res).
+make_http_res([_ | T], Res) ->
+    make_http_res(T, Res).
 
 insert_woker_pid(Num, Data) ->
     ets:insert(?ETS_WORKER, {Num, self(), Data, 0}).
@@ -136,7 +142,11 @@ update_buff_data([{Id, Value} | T], Stamp) ->
     case ets:lookup(?ETS_BUFF, Id) of
     [{Id, Value, _}] ->
         skip;
+    [{Id, Data, _}] when Data == Value ->
+        skip;
+    [{Id, _, _}] ->
+        ets:insert(?ETS_BUFF, {Id, Value, Stamp});
     _ ->
-        ets:insert(?ETS_BUFF, {Id, Value, Stamp})
+        skip
     end,
     update_buff_data(T, Stamp).
