@@ -9,8 +9,8 @@
         code_change/3,
         terminate/2]).
 
--export([start_link/0,
-        make_db/0
+-export([start_link/0
+        % make_db/0
         ]).
 
 -define (MAX_DB_WRITE, 200000).
@@ -188,10 +188,10 @@ make_sql_where_from_range(Range) ->
     make_sql_where_from_range(Range, []).
 
 make_sql_where_from_range([{Cid1, Cid3, _}], Res) ->
-    "(cid1="++Cid1++" and cid3="++Cid3++")"++Res;
+    "(CatValue1="++Cid1++" and CatValue3="++Cid3++")"++Res;
 
 make_sql_where_from_range([{Cid1, Cid3, _} | T], Res) ->
-    make_sql_where_from_range(T, " or (cid1="++Cid1++" and cid3="++Cid3++")"++Res).
+    make_sql_where_from_range(T, " or (CatValue1="++Cid1++" and CatValue3="++Cid3++")"++Res).
 
 select_mysql_table(Query) ->
     case catch execute_sql(Query) of
@@ -206,53 +206,53 @@ execute_sql(Query) ->
     emysql:execute(?WINDMILL_EMYSQL_POOL, Query).
 
 
-make_db() ->
-    create_table(),
-    make_table_data().
+% make_db() ->
+%     create_table(),
+%     make_table_data().
 
-make_table_data() ->
-    make_table_data(1000000).
+% make_table_data() ->
+%     make_table_data(1000000).
 
-make_table_data(2000000) ->
-    ok;
+% make_table_data(2000000) ->
+%     ok;
 
-make_table_data(Min) ->
-    Time1 = misc_timer:now_milliseconds(),
-    Data = make_data(Min+1, Min + 200000),
-    Time2 = misc_timer:now_milliseconds(),
-    Value = make_field_string_int_table(Data, ""),
-    Time3 = misc_timer:now_milliseconds(),
-    Query = nake_query_update_table_field_value("user", "id,value,cid1,cid3", Value),
-    % Query =  "INSERT INTO user(id,value,cid1,cid3) VALUES"++Value,
-    Time4 = misc_timer:now_milliseconds(),
-    execute_sql(Query),
-    Time5 = misc_timer:now_milliseconds(),
-    io:format("data ~p, Value ~p, Query ~p, mysql ~p, all ~p~n",
-        [Time2 - Time1, Time3 - Time2, Time4 - Time3, Time5 - Time4, Time5 - Time1]),
-    make_table_data(Min + 200000).
+% make_table_data(Min) ->
+%     Time1 = misc_timer:now_milliseconds(),
+%     Data = make_data(Min+1, Min + 200000),
+%     Time2 = misc_timer:now_milliseconds(),
+%     Value = make_field_string_int_table(Data, ""),
+%     Time3 = misc_timer:now_milliseconds(),
+%     Query = nake_query_update_table_field_value("user", "id,value,CatValue1,CatValue3", Value),
+%     % Query =  "INSERT INTO user(id,value,cid1,cid3) VALUES"++Value,
+%     Time4 = misc_timer:now_milliseconds(),
+%     execute_sql(Query),
+%     Time5 = misc_timer:now_milliseconds(),
+%     io:format("data ~p, Value ~p, Query ~p, mysql ~p, all ~p~n",
+%         [Time2 - Time1, Time3 - Time2, Time4 - Time3, Time5 - Time4, Time5 - Time1]),
+%     make_table_data(Min + 200000).
 
-make_data(Min, Max) ->
-    [{X, util:rand(101, 999)/100, util:rand(1, 100), util:rand(1, 100)} || X <- lists:seq(Min, Max)].
+% make_data(Min, Max) ->
+%     [{X, util:rand(101, 999)/100, util:rand(1, 100), util:rand(1, 100)} || X <- lists:seq(Min, Max)].
 
-make_field_string_int_table([], [_ | Res]) ->
-    Res;
+% make_field_string_int_table([], [_ | Res]) ->
+%     Res;
 
-make_field_string_int_table([{Id, Value, Cid1, Cid3} | T], Res)  ->
-    IdStr = util:term_to_string(Id),
-    ValueStr = util:term_to_string(Value),
-    Cid1Str = util:term_to_string(Cid1),
-    Cid3Str = util:term_to_string(Cid3),
-    NewRes = ",("++IdStr++","++ValueStr++","++Cid1Str++","++Cid3Str++")"++Res,
-    make_field_string_int_table(T, NewRes).
+% make_field_string_int_table([{Id, Value, Cid1, Cid3} | T], Res)  ->
+%     IdStr = util:term_to_string(Id),
+%     ValueStr = util:term_to_string(Value),
+%     Cid1Str = util:term_to_string(Cid1),
+%     Cid3Str = util:term_to_string(Cid3),
+%     NewRes = ",("++IdStr++","++ValueStr++","++Cid1Str++","++Cid3Str++")"++Res,
+%     make_field_string_int_table(T, NewRes).
 
-create_table() ->
-    create_table_user(),
-    create_table_user_log().
+% create_table() ->
+%     create_table_user(),
+%     create_table_user_log().
 
-create_table_user() ->
-    Sql = "CREATE TABLE user(id INT PRIMARY KEY, value Float, cid1 INT, cid3 INT)",
-    execute_sql(Sql).
+% create_table_user() ->
+%     Sql = "CREATE TABLE user(id INT PRIMARY KEY, value Float, CatValue1 INT, CatValue3 INT)",
+%     execute_sql(Sql).
 
-create_table_user_log() ->
-    Sql = "CREATE TABLE user_log(log_id INT PRIMARY KEY AUTO_INCREMENT, id INT, value Float)",
-    execute_sql(Sql).
+% create_table_user_log() ->
+%     Sql = "CREATE TABLE user_log(log_id INT PRIMARY KEY AUTO_INCREMENT, id INT, value Float)",
+%     execute_sql(Sql).

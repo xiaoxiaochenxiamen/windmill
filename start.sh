@@ -1,9 +1,6 @@
 #!/bin/bash
-
 NODE_NAME=windmill_3
-
 CONFIG_FILE=windmill_3
-MARK_FILE="../logs/mark.log"
 SMP=auto
 ERL_PROCESSES=1024000
 ERL_PORTS=65535
