@@ -10,8 +10,7 @@
         terminate/2]).
 
 -export([start_link/0,
-        peek/0,
-        save/0
+        peek/0
         ]).
 
 start_link() ->
@@ -19,7 +18,6 @@ start_link() ->
 
 init(_) ->
     process_flag(trap_exit, true),
-    observer:start(),
     start_worker(),
     erlang:send_after(0, self(), worker_run),
     put(over, 0),
@@ -81,9 +79,6 @@ peek() ->
     io:format("Mysql -- Min : ~p , Max : ~p (ms)~n", [MinMysql, MaxMysql]),
     io:format("Mylog -- Min : ~p , Max : ~p (ms)~n", [MinMyLog, MaxMyLog]).
 
-save() ->
-    io:format("save buff  ...~n"),
-    mysql ! save.
 
 get_http_time_log() ->
     F = fun({_, _, _, Time}, {Min, Max}) ->

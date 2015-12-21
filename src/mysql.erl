@@ -38,15 +38,12 @@ terminate(_Reason, Status) ->
 handle_call(_Info, _From, Status) ->
     {reply, ok, Status}.
 
-
 handle_cast(_Info, Status) ->
     {noreply, Status}.
 
 handle_info({update, Stamp}, Status) ->
     update_mysql(Status, Stamp),
     {noreply, Stamp};
-handle_info(save, Status) ->
-    {noreply, Status};
 
 handle_info(_Info, Status) ->
     {noreply, Status}.
