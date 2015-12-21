@@ -91,8 +91,9 @@ write_data([]) ->
 
 write_data(Data) ->
     Value = make_field_string(Data, ""),
+    LogValue = make_log_field_string(Data, ""),
     Query = make_update_mysql(Value),
-    QueryLog = make_log_mysql(Value),
+    QueryLog = make_log_mysql(LogValue),
     Time1 = misc_timer:now_milliseconds(),
     emysql:execute(?WINDMILL_EMYSQL_POOL, Query),
     Time2 = misc_timer:now_milliseconds(),
@@ -126,14 +127,25 @@ make_field_string([{Id, Value} | T], Res) ->
     NewRes = ",("++IdStr++","++ValueStr++")"++Res,
     make_field_string(T, NewRes).
 
+
+make_log_field_string([], [_ | Res]) ->
+    Res;
+
+make_log_field_string([{Id, Value} | T], Res) ->
+    IdStr = util:term_to_string(Id),
+    ValueStr = util:term_to_string(Value),
+    NewRes = ",("++IdStr++","++ValueStr++",1)"++Res,
+    make_log_field_string(T, NewRes).
+
 make_update_mysql(Value) ->
     Table = util:get_init_config(mysql_table),
-    nake_query_update_table_field_value(Table, "id,value", Value).
+    Field = util:get_init_config(mysql_table_field),
+    nake_query_update_table_field_value(Table, Field, Value).
 
 make_log_mysql(Value) ->
     Table = util:get_init_config(mysql_log_table),
-    % Field = util:get_init_config(mysql_log_field),
-    "INSERT INTO "++Table++"(id,value)"++" VALUES"++Value.
+    Field = util:get_init_config(mysql_log_field),
+    "INSERT INTO "++Table++"("++Field++")"++" VALUES"++Value.
 
 
 
@@ -157,9 +169,9 @@ save_buff_data([[Id, Value] | T]) ->
 make_load_mysql_query() ->
     Table = util:get_init_config(mysql_table),
     Range = util:get_init_config(mysql_table_key_range),
-    % Field = util:get_init_config(mysql_table_field),
+    Field = util:get_init_config(mysql_table_field),
     Where = make_sql_where_from_range(Range),
-    "SELECT id,value FROM "++Table++" WHERE "++Where.
+    "SELECT "++Field++" FROM "++Table++" WHERE "++Where.
 
 
 nake_query_update_table_field_value(Table, Field, Value) ->
