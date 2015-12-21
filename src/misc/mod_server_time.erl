@@ -30,7 +30,7 @@ start_link() ->
 
 init([]) ->
     ets:new(ets_timer, [set, protected, named_table, {read_concurrency, true}]),
-    NowSecs = erlang:now(),
+    NowSecs = erlang:timestamp(),
     NowUniversalTime = calendar:now_to_universal_time(NowSecs),
     NowLocalTime = calendar:universal_time_to_local_time(NowUniversalTime),
 
@@ -54,7 +54,7 @@ handle_cast(_Msg, State) ->
 
 handle_info({event, clock}, State) ->
     {_Total_Run_Time, Time_Since_Last_Call} = statistics(runtime),
-    NowSecs = erlang:now(),
+    NowSecs = erlang:timestamp(),
     NowUniversalTime = calendar:now_to_universal_time(NowSecs),
     NowLocalTime = calendar:universal_time_to_local_time(NowUniversalTime),
 

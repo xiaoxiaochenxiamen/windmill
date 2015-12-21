@@ -75,7 +75,7 @@ set_database(Connection, Database) ->
 
 set_encoding(_, undefined) -> ok;
 set_encoding(Connection, {Encoding, Collation}) ->
-    Packet = <<?COM_QUERY, "set names '", (erlang:atom_to_binary(Encoding, utf8))/binary, 
+    Packet = <<?COM_QUERY, "set names '", (erlang:atom_to_binary(Encoding, utf8))/binary,
         "' collate '", (erlang:atom_to_binary(Collation, utf8))/binary,"'">>,
     emysql_tcp:send_and_recv_packet(Connection#emysql_connection.socket, Packet, 0);
 set_encoding(Connection, Encoding) ->
@@ -260,7 +260,7 @@ run_startcmds_or_die(#emysql_connection{socket=Socket}, StartCmds) ->
         end,
         StartCmds
     ).
- 
+
 set_encoding_or_die(#emysql_connection { socket = Socket } = Connection, Encoding) ->
     case set_encoding(Connection, Encoding) of
         ok -> ok;
@@ -269,7 +269,7 @@ set_encoding_or_die(#emysql_connection { socket = Socket } = Connection, Encodin
             gen_tcp:close(Socket),
             exit({failed_to_set_encoding, Err2#error_packet.msg})
     end.
- 
+
 reset_connection(Pools, Conn, StayLocked) ->
     %% if a process dies or times out while doing work
     %% the socket must be closed and the connection reset
@@ -334,7 +334,7 @@ need_test_connection(Conn) ->
      (Conn#emysql_connection.last_test_time + Conn#emysql_connection.test_period < now_seconds()).
 
 now_seconds() ->
-   {M, S, _} = erlang:now(),
+   {M, S, _} = erlang:timestamp(),
    M * 1000000 + S.
 
 %%--------------------------------------------------------------------
@@ -365,7 +365,7 @@ set_params_packet(NumStart, Values) ->
 	BinValues = [encode(Val, binary) || Val <- Values],
 	BinNums = [encode(Num, binary) || Num <- lists:seq(NumStart, NumStart + length(Values) - 1)],
 	BinPairs = lists:zip(BinNums, BinValues),
-	Parts = [<<"@", NumBin/binary, "=", ValBin/binary>> || {NumBin, ValBin} <- BinPairs], 
+	Parts = [<<"@", NumBin/binary, "=", ValBin/binary>> || {NumBin, ValBin} <- BinPairs],
 	Sets = list_to_binary(join(Parts, <<",">>)),
 	<<?COM_QUERY, "SET ", Sets/binary>>.
 
@@ -449,7 +449,7 @@ encode({_Time1, _Time2, _Time3}=Val, binary) ->
     list_to_binary(encode(Val, list));
 encode(Val, _) ->
     {error, {unrecognized_value, Val}}.
-    
+
 %% @private
 two_digits(Nums) when is_list(Nums) ->
     [two_digits(Num) || Num <- Nums];

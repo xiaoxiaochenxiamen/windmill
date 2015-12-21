@@ -67,7 +67,7 @@ add_pool()->
     MysqlPassword = util:get_init_config(mysql_password),
     MysqlDatabase = util:get_init_config(mysql_database),
     emysql:add_pool(?WINDMILL_EMYSQL_POOL, [
-        {size, 1},
+        {size, 10},
         {user, MysqlUserName},
         {host, MysqlHost},
         {port, MysqlPort},

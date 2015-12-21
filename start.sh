@@ -2,12 +2,10 @@
 
 NODE_NAME=windmill
 
-CONFIG_FILE=run_${NODE_NAME}
-MARK_FILE="../logs/mark.log"
+CONFIG_FILE=windmill
 SMP=auto
 ERL_PROCESSES=1024000
 ERL_PORTS=65535
-cd ../config
 
 ARGS=
 while [ $# -ne 0 ] ; do
@@ -22,20 +20,16 @@ done
 
 live()
 {
-    echo "--------------------------------------------------------------------"
     echo ""
-    echo "重要提示: 节点将会以交互式模式启动"
+    echo "启动 windmill 2.2 "
     echo ""
-    echo "如果想退出该模式请输入 q()，然后回车"
-    echo ""
-    echo "--------------------------------------------------------------------"
     echo "任意键继续"
     read foo
     erl +P ${ERL_PROCESSES} \
         +t 2048576 \
         -smp ${SMP} \
         -env ERL_MAX_PORTS ${ERL_PORTS} \
-        -pa ../ebin \
+        -pa ebin  Emysql/ebin \
         -sname ${NODE_NAME} \
         -boot start_sasl \
         -config ${CONFIG_FILE} \

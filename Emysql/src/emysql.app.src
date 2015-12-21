@@ -6,9 +6,9 @@
     {description, "Emysql - Erlang MySQL driver"},
     {vsn, "0.4.1"},
     {modules, []},
-    {mod, {emysql_app, []}},
+    {mod, {emysql_app, ["%MAKETIME%"]}},
     {registered, [emysql_conn_mgr, emysql_sup]},
-    {applications, [kernel, stdlib]},
+    {applications, [kernel, stdlib, crypto]},
     {env, [
       {default_timeout, 500000},
       {conn_test_period, 28000}]}

@@ -28,14 +28,14 @@
 %% External functions
 %% ====================================================================
 now() ->
-    erlang:now().
+    erlang:timestamp().
 
 now_seconds_without_pro() ->
-    {MegaSecs, Secs, _MicroSecs} = erlang:now(),
+    {MegaSecs, Secs, _MicroSecs} = erlang:timestamp(),
     MegaSecs * 1000000 + Secs.
 
 now_milliseconds_without_pro() ->
-    {MegaSecs, Secs, MicroSecs} = erlang:now(),
+    {MegaSecs, Secs, MicroSecs} = erlang:timestamp(),
     NowMicroSecs = MegaSecs * 1000000000000 + Secs * 1000000 + MicroSecs,
     NowMicroSecs div 1000.
 
