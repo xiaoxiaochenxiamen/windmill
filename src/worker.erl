@@ -116,16 +116,17 @@ decode_json_res(Param) ->
     case catch json:decode(Param) of
     {ok, {obj, Data}, []} ->
         WareInfo = get_wareInfo(Data),
+        io:format("wareinfo = ~p~n", [WareInfo]),
         make_http_res(WareInfo);
     A ->
-        io:format("decode json ~p~n", [A]),
+        io:format("decode json fail ~p~n", [A]),
         []
     end.
 
 get_wareInfo([]) ->
     [];
 
-get_wareInfo([{"wareInfo", WareInfo} | _]) ->
+get_wareInfo([{"wareInfo", WareInfo} | _]) when is_list(WareInfo) ->
     WareInfo;
 
 get_wareInfo([_ | T]) ->
