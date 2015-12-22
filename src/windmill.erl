@@ -36,41 +36,43 @@ handle_cast(_Info, Status) ->
     {noreply, Status}.
 
 handle_info(worker_run, Status) ->
+    Cycle = util:get_init_config(http_send_cycle),
+    erlang:send_after(Cycle*1000, self(), worker_run),
     Now = misc_timer:now_seconds(),
-    put(last, Now),
+    % put(last, Now),
     worker_run(Now),
     {noreply, Status};
 
-handle_info(over, Status) ->
-    recive_worker_over(),
-    {noreply, Status};
+% handle_info(over, Status) ->
+%     recive_worker_over(),
+%     {noreply, Status};
 
 handle_info(_Info, Status) ->
     {noreply, Status}.
 
 
-recive_worker_over() ->
-    Over = get(over),
-    Worker = get(worker),
-    case Over + 1 == Worker of
-    true ->
-        Now = misc_timer:now_seconds(),
-        Cycle = util:get_init_config(http_send_cycle),
-        Last = get(last),
-        Sec = get_next_cycle(Cycle, (Now - Last)),
-        erlang:send_after(Sec*1000, self(), worker_run),
-        mysql ! {update, Last},
-        put(over, 0);
-    _ ->
-        put(over, Over + 1)
-    end.
+% recive_worker_over() ->
+%     Over = get(over),
+%     Worker = get(worker),
+%     case Over + 1 == Worker of
+%     true ->
+%         Now = misc_timer:now_seconds(),
+%         Cycle = util:get_init_config(http_send_cycle),
+%         Last = get(last),
+%         Sec = get_next_cycle(Cycle, (Now - Last)),
+%         erlang:send_after(Sec*1000, self(), worker_run),
+%         mysql ! {update, Last},
+%         put(over, 0);
+%     _ ->
+%         put(over, Over + 1)
+%     end.
 
 
-get_next_cycle(Cycle, Begin) when Cycle > Begin ->
-    Cycle - Begin;
+% get_next_cycle(Cycle, Begin) when Cycle > Begin ->
+%     Cycle - Begin;
 
-get_next_cycle(_, _) ->
-    0.
+% get_next_cycle(_, _) ->
+%     0.
 
 peek() ->
     NowStr = util:formated_timestamp(),

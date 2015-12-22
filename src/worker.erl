@@ -13,7 +13,7 @@
         ]).
 
 -define (UrlBody1, "&body=%7B%22catelogyIdLevel1%22%3A%22").
--define (UrlBody2, "%22%2C%22stock%22%3A%221%22%2C%22pagesize%22%3A%2210%22%2C%22catelogyId%22%3A%22").
+-define (UrlBody2, "%22%2C%22stock%22%3A%221%22%2C%22pagesize%22%3A%2210%22%2C%22jshop%22%3A%221%22%2C%22self%22%3A%221%22%2C%22catelogyId%22%3A%22").
 -define (UrlBody3, "%22%2C%22page%22%3A%22").
 -define (UrlBody4, "%22%2C%22cid%22%3A%22").
 -define (UrlBody5, "%22%7D").
@@ -50,7 +50,13 @@ handle_cast(_Info, Status) ->
     {noreply, Status}.
 
 handle_info({run, Stamp}, Status) ->
+    % T1 = misc_timer:now_milliseconds(),
+    % io:format("worker start ~p~n", [T1]),
     http_request(Status#worker.init, Stamp),
+
+    % T2 = misc_timer:now_milliseconds(),
+    % io:format("http_time = ~p ms~n", [T2 - T1]),
+
     update_log_http_time(Status#worker.id),
     {noreply, Status};
 
@@ -59,19 +65,20 @@ handle_info(_Info, Status) ->
 
 
 http_request({Cid1, Cid3, Pager}, Stamp) ->
-    http_request_sync_data(Cid1, Cid3, Pager, Stamp).
+    http_request_sync_data(Cid1, Cid3, Pager, Stamp, []).
 
-http_request_sync_data(_Cid1, _Cid3, 0, _Stamp) ->
-    windmill ! over;
+http_request_sync_data(_Cid1, _Cid3, 0, _Stamp, Data) ->
+    % windmill ! over;
+    mysql:write_data(Data);
 
-http_request_sync_data(Cid1, Cid3, Pager, Stamp) ->
+http_request_sync_data(Cid1, Cid3, Pager, Stamp, Res) ->
     Url = make_url(Cid1, Cid3, Pager),
     Time = misc_timer:now_milliseconds(),
     Body = post_request_to_sever(Url),
     check_http_time(Time),
     Data = decode_json_res(Body),
-    update_buff_data(Data, Stamp),
-    http_request_sync_data(Cid1, Cid3, Pager-1, Stamp).
+    NewRes = update_buff_data(Data, Stamp, Res),
+    http_request_sync_data(Cid1, Cid3, Pager-1, Stamp, NewRes).
 
 
 
@@ -116,10 +123,10 @@ decode_json_res(Param) ->
     case catch json:decode(Param) of
     {ok, {obj, Data}, []} ->
         WareInfo = get_wareInfo(Data),
-        io:format("wareinfo = ~p~n", [WareInfo]),
+        % io:format("wareinfo = ~p~n", [WareInfo]),
         make_http_res(WareInfo);
-    A ->
-        io:format("decode json fail ~p~n", [A]),
+    _ ->
+        % io:format("decode json fail ~p~n", [A]),
         []
     end.
 
@@ -173,18 +180,18 @@ get_id_value_bin([_ | T], Id, Value) ->
 insert_woker_pid(Num, Data) ->
     ets:insert(?ETS_WORKER, {Num, self(), Data, 0}).
 
-update_buff_data([], _) ->
-    ok;
+update_buff_data([], _, Res) ->
+    Res;
 
-update_buff_data([{Id, Value} | T], Stamp) ->
+update_buff_data([{Id, Value} | T], Stamp, Res) ->
     case ets:lookup(?ETS_BUFF, Id) of
     [{Id, Value, _}] ->
-        skip;
+        update_buff_data(T, Stamp, Res);
     [{Id, Data, _}] when Data == Value ->
-        skip;
+        update_buff_data(T, Stamp, Res);
     [{Id, _, _}] ->
-        ets:insert(?ETS_BUFF, {Id, Value, Stamp});
+        ets:insert(?ETS_BUFF, {Id, Value, Stamp}),
+        update_buff_data(T, Stamp, [{Id, Value} | Res]);
     _ ->
-        skip
-    end,
-    update_buff_data(T, Stamp).
+        update_buff_data(T, Stamp, Res)
+    end.

@@ -9,7 +9,8 @@
         code_change/3,
         terminate/2]).
 
--export([start_link/0
+-export([start_link/0,
+        write_data/1
         % make_db/0
         ]).
 
