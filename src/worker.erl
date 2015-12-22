@@ -114,23 +114,60 @@ decode_json_res([]) ->
 
 decode_json_res(Param) ->
     case catch json:decode(Param) of
-    {ok, {obj,[{"page", _}, {"wareInfo", WareInfo}, {"isUsed", _}]}, []} ->
+    {ok, {obj, Data}, []} ->
+        WareInfo = get_wareInfo(Data),
         make_http_res(WareInfo);
-    _ ->
+    A ->
+        io:format("decode json ~p~n", [A]),
         []
     end.
 
+get_wareInfo([]) ->
+    [];
+
+get_wareInfo([{"wareInfo", WareInfo} | _]) ->
+    WareInfo;
+
+get_wareInfo([_ | T]) ->
+    get_wareInfo(T).
+
 make_http_res(WareInfo) ->
+    % io:format("wareinfo ~p~n", [WareInfo]),
     make_http_res(WareInfo, []).
 
 make_http_res([], Res) ->
     Res;
 
-make_http_res([{obj, [_, _, _, {"wareId", IdBin}, {"jdPrice", ValueBin}]} | T], Res) ->
-    make_http_res(T, [{binary_to_integer(IdBin), binary_to_float(ValueBin)} | Res]);
+make_http_res([{obj, Data} | T], Res) ->
+    case get_id_value_bin(Data) of
+    {Id, Value} ->
+        make_http_res(T, [{Id, Value} | Res]);
+    _ ->
+        make_http_res(T, Res)
+    end;
 
 make_http_res([_ | T], Res) ->
     make_http_res(T, Res).
+
+get_id_value_bin(Data) ->
+    get_id_value_bin(Data, [], []).
+
+
+get_id_value_bin(_, Id, Value) when Id =/= [], Value =/= [] ->
+    {binary_to_integer(Id), binary_to_float(Value)};
+
+get_id_value_bin([], _, _) ->
+    [];
+
+get_id_value_bin([{"wareId", Id} | T], _, Value) ->
+     get_id_value_bin(T, Id, Value);
+
+get_id_value_bin([{"jdPrice", Value} | T], Id, _) ->
+     get_id_value_bin(T, Id, Value);
+
+get_id_value_bin([_ | T], Id, Value) ->
+     get_id_value_bin(T, Id, Value).
+
 
 insert_woker_pid(Num, Data) ->
     ets:insert(?ETS_WORKER, {Num, self(), Data, 0}).

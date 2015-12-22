@@ -57,13 +57,20 @@ recive_worker_over() ->
         Now = misc_timer:now_seconds(),
         Cycle = util:get_init_config(http_send_cycle),
         Last = get(last),
-        Sec = Cycle - (Now - Last),
+        Sec = get_next_cycle(Cycle, (Now - Last)),
         erlang:send_after(Sec*1000, self(), worker_run),
         mysql ! {update, Last},
         put(over, 0);
     _ ->
         put(over, Over + 1)
     end.
+
+
+get_next_cycle(Cycle, Begin) when Cycle > Begin ->
+    Cycle - Begin;
+
+get_next_cycle(_, _) ->
+    0.
 
 peek() ->
     NowStr = util:formated_timestamp(),
