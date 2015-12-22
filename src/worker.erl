@@ -12,11 +12,11 @@
 -export([start_link/1
         ]).
 
--define (UrlBody1, "?functionId=getCat&body=%7B%22catelogyIdLevel1%22%3A%22%7B").
--define (UrlBody2, "%7D%22%2C%22stock%22%3A%221%22%2C%22pagesize%22%3A%2210%22%2C%22catelogyId%22%3A%22%7B").
--define (UrlBody3, "%7D%22%2C%22page%22%3A%22%7B").
--define (UrlBody4, "%7D%22%2C%22cid%22%3A%22%7B").
--define (UrlBody5, "%7D%22%7D").
+-define (UrlBody1, "&body=%7B%22catelogyIdLevel1%22%3A%22").
+-define (UrlBody2, "%22%2C%22stock%22%3A%221%22%2C%22pagesize%22%3A%2210%22%2C%22catelogyId%22%3A%22").
+-define (UrlBody3, "%22%2C%22page%22%3A%22").
+-define (UrlBody4, "%22%2C%22cid%22%3A%22").
+-define (UrlBody5, "%22%7D").
 
 -record(worker,{
     id,
