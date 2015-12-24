@@ -10,7 +10,6 @@
         terminate/2]).
 
 -export([start_link/0
-    % make/1
         ]).
 
 
@@ -20,12 +19,12 @@ start_link() ->
 init(_) ->
     process_flag(trap_exit, true),
     crypto:start(),
-    Res = application:start(?EMYSQL_APP),
-    io:format("emysql start ~p~n", [Res]),
-    Pool = add_pool(),
-    io:format("emysql poll ~p~n", [Pool]),
-    io:format("~p -- pool : ~p start ok!~n", [?EMYSQL_APP, ?WINDMILL_EMYSQL_POOL]),
+    application:start(emysql),
+    add_pool(),
     load_mysql(),
+    put(last, misc_timer:now_milliseconds()),
+    ets:insert(ets_time_log, {mysql_min, 0}),
+    ets:insert(ets_time_log, {mysql_max, 0}),
     {ok, []}.
 
 code_change(_OldVsn, Status, _Extra) ->
@@ -42,19 +41,8 @@ handle_cast(_Info, Status) ->
     {noreply, Status}.
 
 handle_info(run, Status) ->
-    Sec = util:get_init_config(mysql_write_cycle),
-    erlang:send_after(Sec*1000, self(), run),
-    write_mysql_data(),
-    {noreply, Status};
-
-handle_info(save, Status) ->
-    BuffA = ets:tab2list(?ETS_BUFF_A),
-    BuffB = ets:tab2list(?ETS_BUFF_B),
-    BuffC = ets:tab2list(?ETS_BUFF_C),
-    write_data(BuffA),
-    write_data(BuffB),
-    write_data(BuffC),
-    io:format("save fnish ! update mysql row: ~p !~n", [length(BuffA)+length(BuffB)+length(BuffC)]),
+    erlang:send_after(5*1000, self(), run),
+    update_mysql_data(),
     {noreply, Status};
 
 handle_info(_Info, Status) ->
@@ -66,7 +54,7 @@ add_pool()->
     MysqlUserName = util:get_init_config(mysql_username),
     MysqlPassword = util:get_init_config(mysql_password),
     MysqlDatabase = util:get_init_config(mysql_database),
-    emysql:add_pool(?WINDMILL_EMYSQL_POOL, [
+    emysql:add_pool(windmill_pool, [
         {size, 10},
         {user, MysqlUserName},
         {host, MysqlHost},
@@ -77,20 +65,24 @@ add_pool()->
     ]).
 
 
-write_mysql_data() ->
-    TimeStr = util:formated_timestamp(),
-    Buff = util:get_next_buff(),
-    case ets:info(Buff, size) of
-    0 ->
-        util:update_cur_buff(Buff),
-        io:format("~p is nil ! time: ~s~n", [Buff, TimeStr]);
-    Size ->
-        Data = ets:tab2list(Buff),
-        ets:delete_all_objects(Buff),
-        write_data(Data),
-        util:update_cur_buff(Buff),
-        io:format("update mysql row: ~p ! time: ~s~n", [Size, TimeStr])
-    end.
+update_mysql_data() ->
+    Now = misc_timer:now_milliseconds(),
+    Last = get(last),
+    Math = [{{'$1','$2','$3'},[{'>','$3',10},{'>',20,'$3'}],[{{'$1','$2'}}]}],
+    Res = ets:select(ets_buff, Math, 200000),
+    update_mysql_data(Res).
+
+update_mysql_data({Data, '$end_of_table'}) ->
+    write_data(Data);
+
+update_mysql_data({Data, Continue}) ->
+    write_data(Data),
+    Res = ets:select(Continue),
+    update_mysql_data(Res);
+
+update_mysql_data(_) ->
+    ok.
+
 
 write_data([]) ->
     ok;
@@ -100,46 +92,48 @@ write_data(Data) ->
     Query = make_update_mysql(Value),
     QueryLog = make_log_mysql(Value),
     Time1 = misc_timer:now_milliseconds(),
-    emysql:execute(?WINDMILL_EMYSQL_POOL, Query),
+    execute_sql(Query),
     Time2 = misc_timer:now_milliseconds(),
-    emysql:execute(?WINDMILL_EMYSQL_POOL, QueryLog),
-    Time3 = misc_timer:now_milliseconds(),
-    check_time(mysql, Time2 - Time1),
-    check_time(mysql_log, Time3 - Time2).
+    execute_sql(QueryLog),
+    TimeStr = util:formated_timestamp(),
+    Time3 = Time2 - Time1,
+    io:format("~p  Update DB row: ~p ! Spend: ~s (ms)~n", [TimeStr, length(Data), Time3])
+    check_time(Time3).
 
-check_time(Key, Time) ->
-    case ets:lookup(?ETS_TIME_LOG, Key) of
-    [{_, Min, Max}] ->
-        if
-        Min > Time ->
-            ets:insert(?ETS_TIME_LOG, {Key, Time, Max});
-        Time > Max ->
-            ets:insert(?ETS_TIME_LOG, {Key, Min, Time});
-        true ->
-            skip
-        end;
+check_time(Time) ->
+    case ets:lookup(ets_time_log, mysql_max) of
+    [{_, Max}] when Max >= Time ->
+        skip;
     _ ->
-       ets:insert(?ETS_TIME_LOG, {Key, Time, Time})
+        ets:insert(ets_time_log, {mysql_max, Time})
+    end,
+    case ets:lookup(ets_time_log, mysql_min) of
+    [{_, Min}] when Min =< Time ->
+        skip;
+    _ ->
+        ets:insert(ets_time_log, {mysql_min, Time})
     end.
 
 make_field_string([], [_ | Res]) ->
     Res;
 
-make_field_string([{Key, Value} | T], Res) ->
+make_field_string([{Id, Value} | T], Res) ->
     ValueStr = util:term_to_string(Value),
-    NewRes = ",("++Key++","++ValueStr++")"++Res,
+    IdStr = util:term_to_string(Id),
+    NewRes = ",("++IdStr++","++ValueStr++")"++Res,
     make_field_string(T, NewRes).
 
 make_update_mysql(Value) ->
     Table = util:get_init_config(mysql_table),
     Field = util:get_init_config(mysql_table_field),
     UpdateField = make_update_filed(Field),
-    ?MAKE_QUERY_UPDATE_TABLE_FIELD_VALUE(Table, Field, Value, UpdateField).
+    "INSERT INTO "++Table++"("++Field++")"++" VALUES"++Value++" ON DUPLICATE KEY UPDATE "++UpdateField.
+
 
 make_log_mysql(Value) ->
     Table = util:get_init_config(mysql_log_table),
     Field = util:get_init_config(mysql_log_field),
-    ?MAKE_QUERY_REPLACE_TABLE_FIELD_VALUE(Table, Field, Value).
+    "INSERT INTO "++Table++"("++Field++")"++" VALUES"++Value.
 
 make_update_filed(Field) ->
     FieldList = string:tokens(Field, ","),
@@ -148,40 +142,55 @@ make_update_filed(Field) ->
     Str.
 
 load_mysql() ->
-    try
-        Query = make_load_mysql_query(),
-        io:format("load mysql start ...~n"),
-        Time1 = misc_timer:now_milliseconds(),
-        Data = select_mysql_table(Query),
-        Time2 = misc_timer:now_milliseconds(),
-        io:format("load mysql fnish !~n"),
-        io:format("mysql data len: ~p,  time: ~p (ms)~n", [length(Data), Time2 - Time1]),
-        io:format("start distribute data and start worker process ...~n"),
-        distribute(Data)
-    catch
-        _:Reason ->
-            io:format("load mysql fail : ~p~n", [Reason])
-    end.
+    Query = make_load_mysql_query(),
+    Time1 = misc_timer:now_milliseconds(),
+    Data = select_mysql_table(Query),
+    Time2 = misc_timer:now_milliseconds(),
+    io:format("load  total: ~p,  time: ~p (ms)~n", [length(Data), Time2 - Time1]),
+    write_ets_buff(Data),
+    make_ets_url(Data),
+    distribute(Data).
+
+make_ets_url(Data) ->
+    make_ets_url(Data, "", 0, 0).
+
+make_ets_url([], _, _, _) ->
+    ok;
+
+make_ets_url(Data, Url, Num, 1000) ->
+    ets:insert(ets_url, {Num, Url}),
+    make_ets_url(Data, "", Num+1, 0);
+
+make_ets_url([[Id | _] | T], Url, Num, Pos) ->
+    IdStr = util:term_to_string(Id),
+    make_ets_url(T, "%2cJ_"++IdStr++Url, Num, Pos+1).
+
+
+
+
+
+
 
 make_load_mysql_query() ->
     Table = util:get_init_config(mysql_table),
-    Key = util:get_init_config(mysql_table_key),
-    MaxKey = util:get_init_config(mysql_table_key_max),
-    MinKey = util:get_init_config(mysql_table_key_min),
+    Max = util:get_init_config(mysql_table_key_max),
+    Min = util:get_init_config(mysql_table_key_min),
     Field = util:get_init_config(mysql_table_field),
-    ?MAKE_QUERY_SELECT_TABLE(Table, Field, Key, MinKey, MaxKey).
+    [Id | _] = string:tokens(Field,","),
+    "SELECT "++Field++" FROM "++Table++" WHERE "++Id++" BETWEEN "++Min++" AND "++Max.
+
 
 select_mysql_table(Query) ->
     case catch execute_sql(Query) of
     {result_packet, _, _, Result, _} when is_list(Result)->
         Result;
     Reason ->
-        io:format("select ohther error: ~p~n", [Reason]),
+        io:format("SQL error: ~p~n", [Reason]),
         []
     end.
 
 execute_sql(Query) ->
-    emysql:execute(?WINDMILL_EMYSQL_POOL, Query).
+    emysql:execute(windmill_pool, Query).
 
 
 distribute(Data) ->
@@ -231,6 +240,17 @@ get_worker_data(Data, 0, Res) ->
 
 get_worker_data([[Key, Value] | T], Num, Res) ->
     get_worker_data(T, Num - 1, [{Key, Value} | Res]).
+
+write_ets_buff([]) ->
+    ok;
+
+write_ets_buff([[Id, Value] | T]) ->
+    ets:insert(ets_buff, {Id, Value, 0}),
+    write_ets_buff(T).
+
+
+
+
 
 % make(Float) ->
 %     make(1000000, 1200000, Float),

@@ -41,15 +41,9 @@ peek() ->
     NowStr = util:formated_timestamp(),
     {MinHttp, MaxHttp} = get_http_time_log(),
     {MinMysql, MaxMysql} = get_mysql_time_log(mysql),
-    {MinMyLog, MaxMyLog} = get_mysql_time_log(mysql_log),
-    WorkerNumber = ets:info(?ETS_WORKER_PID, size),
-    BuffSize = ets:info(?ETS_BUFF_A, size) + ets:info(?ETS_BUFF_B, size) + ets:info(?ETS_BUFF_C, size),
     io:format("peek time : ~s~n", [NowStr]),
-    io:format("worker process : ~p~n", [WorkerNumber]),
-    io:format("data buff size : ~p ~n", [BuffSize]),
     io:format("HTTP  -- Min : ~p , Max : ~p (ms)~n", [MinHttp, MaxHttp]),
-    io:format("Mysql -- Min : ~p , Max : ~p (ms)~n", [MinMysql, MaxMysql]),
-    io:format("Mylog -- Min : ~p , Max : ~p (ms)~n", [MinMyLog, MaxMyLog]).
+    io:format("Mysql -- Min : ~p , Max : ~p (ms)~n", [MinMysql, MaxMysql]).
 
 save() ->
     io:format("save buff  ...~n"),

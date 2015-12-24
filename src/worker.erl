@@ -1,5 +1,4 @@
 -module (worker).
--include("windmill.hrl").
 -behaviour(gen_server).
 
 -export([init/1,

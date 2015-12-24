@@ -6,10 +6,7 @@
 ]).
 
 start_link() ->
-    {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
-    io:format("windmill_app_sup:start ok!~n"),
-    {ok, Pid}.
-
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init(_) ->
     {ok,
