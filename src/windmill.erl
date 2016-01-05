@@ -1,5 +1,4 @@
 -module (windmill).
--include("windmill.hrl").
 -behaviour(gen_server).
 
 -export([init/1,
@@ -10,8 +9,7 @@
         terminate/2]).
 
 -export([start_link/0,
-        peek/0,
-        save/0
+        peek/0
         ]).
 
 start_link() ->
@@ -45,9 +43,6 @@ peek() ->
     io:format("HTTP  -- Min : ~p , Max : ~p (ms)~n", [MinHttp, MaxHttp]),
     io:format("Mysql -- Min : ~p , Max : ~p (ms)~n", [MinMysql, MaxMysql]).
 
-save() ->
-    io:format("save buff  ...~n"),
-    mysql ! save.
 get_http_time_log() ->
     F = fun({_, Time}, {Min, Max}) ->
             if
@@ -59,10 +54,10 @@ get_http_time_log() ->
                 {Min, Max}
             end
         end,
-    ets:foldl(F, {nil, -1}, ?ETS_WORKER_PID).
+    ets:foldl(F, {nil, -1}, ets_worker).
 
 get_mysql_time_log(Key) ->
-    case ets:lookup(?ETS_TIME_LOG, Key) of
+    case ets:lookup(ets_time_log, Key) of
     [{_, Min, Max}] ->
         {Min, Max};
     _ ->

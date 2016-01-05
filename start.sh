@@ -21,7 +21,7 @@ done
 live()
 {
     echo ""
-    echo "启动 windmill 2.2 "
+    echo "启动 windmill 2.2 急速版"
     echo ""
     echo "任意键继续"
     read foo

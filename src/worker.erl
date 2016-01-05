@@ -11,13 +11,13 @@
 -export([start_link/1
         ]).
 
-start_link(Data) ->
-    gen_server:start_link(?MODULE, Data, []).
+start_link(Init) ->
+    gen_server:start_link(?MODULE, Init, []).
 
-init(Data) ->
+init(Init) ->
     process_flag(trap_exit, true),
     inets:start(),
-    {ok, lists:sort(key_to_str(Data))}.
+    {ok, Init}.
 
 code_change(_OldVsn, Status, _Extra) ->
     {ok, Status}.
@@ -33,88 +33,60 @@ handle_cast(_Info, Status) ->
     {noreply, Status}.
 
 handle_info(run, Status) ->
-    Cycle = util:get_init_config(http_send_cycle),
-    erlang:send_after(Cycle*1000, self(), run),
-    NewStatus = http_request(Status),
-    {noreply, NewStatus};
+    http_request(Status),
+    erlang:send_after(1000, self(), run),
+    {noreply, Status};
 
 handle_info(_Info, Status) ->
     {noreply, Status}.
 
+http_request({Min, Max}) ->
+    http_request(Min, Max).
 
-check_value(Data, Result) ->
-    check_value(Data, Result, []).
+http_request(Min, Max) when Min > Max ->
+    ok;
 
-
-check_value([], _, Res) ->
-    Res;
-
-check_value(Data, [], Res) when length(Data) > length(Res) ->
-    Res ++ Data;
-
-check_value(Data, [], Res) ->
-    Data ++ Res;
-
-check_value([H | Data], [H | Result], Res) ->
-    check_value(Data, Result, [H | Res]);
-
-check_value([{Key, Old} | Data], [{Key, New} | Result], Res) when Old == New ->
-    check_value(Data, Result, [{Key, New} | Res]);
-
-check_value([{Key, _} | Data], [{Key, New} | Result], Res) ->
-    util:insert_buff({Key, New}),
-    check_value(Data, Result, [{Key, New} | Res]);
-
-check_value([{Old, Value} | Data], [{New, _} | Result], Res) when Old > New ->
-    check_value([{Old, Value} | Data], Result, Res);
-
-check_value([H | Data], Result, Res) ->
-    check_value(Data, Result, [H | Res]).
-
-http_request(Data) ->
-    Once = util:get_init_config(http_per_send),
+http_request(Min, Max) ->
     Time = misc_timer:now_milliseconds(),
-    NewData = http_send(Data, Once, []),
+    Body = http_send(Min),
     check_http_time(Time),
-    lists:sort(check_value(Data, NewData)).
+    Data = decode_json_res(Body),
+    check_value(Data),
+    http_request(Min + 1, Max).
 
-http_send([], _, Res) ->
-    Res;
 
-http_send(Data, Once, Res) ->
-    {Send, T} = get_worker_data(Data, Once, []),
-    Url = make_url(Send),
+http_send(Id) ->
+    case ets:lookup(ets_url, Id) of
+    [{Id, Url}] ->
+        request_http_server(Url);
+    _ ->
+        []
+    end.
+
+request_http_server(Idstr) ->
+    Url = make_url(Idstr),
     case catch httpc:request(Url) of
     {ok,{{"HTTP/1.1",200,"OK"}, _, Body}} ->
-        Result = decode_json_res(Body),
-        http_send(T, Once, Result ++ Res);
-    _ ->
-        http_send(Data, Once, Res)
+        io:format("~p~n", [Body]),
+        Body;
+    A ->
+        io:format("~p~n", [A]),
+        []
     end.
 
 
 check_http_time(Time) ->
     HttpTime = misc_timer:now_milliseconds() - Time,
-    ets:insert(?ETS_WORKER_PID, {self(), HttpTime}).
+    ets:insert(ets_worker, {self(), HttpTime}).
 
 
 
-make_url(Data) ->
+make_url(Idstr) ->
     UrlPrefix = util:get_init_config(http_url_prefix),
-    Key = make_url_key(Data),
-    UrlPrefix++Key.
+    UrlPrefix++Idstr.
 
-make_url_key(Data) ->
-    make_url_key(Data, []).
-
-make_url_key([], []) ->
+decode_json_res([]) ->
     [];
-
-make_url_key([], [_, _, _, _, _ | Res]) ->
-    Res;
-
-make_url_key([{Key, _} | T], Res) ->
-    make_url_key(T, "%2cJ_"++Key++Res).
 
 decode_json_res(Param) ->
     case catch json:decode(Param) of
@@ -128,22 +100,22 @@ make_http_result(Data) ->
     make_http_result(Data, []).
 
 make_http_result([], Res) ->
-    lists:sort(Res);
+    Res;
 
 make_http_result([{obj, [{"id", <<_, _, Key/binary>>}, {"p" ,Value}, _]} | T], Res) ->
-    make_http_result(T, [{binary_to_list(Key), binary_to_float(Value)} | Res]);
+    make_http_result(T, [{binary_to_integer(Key), binary_to_float(Value)} | Res]);
 
 make_http_result([_ | T], Res) ->
     make_http_result(T, Res).
 
-key_to_str(Data) ->
-    [{integer_to_list(Key), Value} || {Key, Value} <- Data].
+check_value([]) ->
+    ok;
 
-get_worker_data([], _, Res) ->
-    {Res, []};
-
-get_worker_data(Data, 0, Res) ->
-    {Res, Data};
-
-get_worker_data([H | T], Num, Res) ->
-    get_worker_data(T, Num - 1, [H | Res]).
+check_value([{Id, New} | T]) ->
+    case ets:lookup(ets_buff, Id) of
+    [{Id, Old, _}] when New /= Old ->
+        ets:insert(ets_buff, {Id, New, misc_timer:now_milliseconds()});
+    _ ->
+        skip
+    end,
+    check_value(T).
